@@ -4,7 +4,7 @@ const cors = require('cors');
 const app = express();
 require('dotenv').config()
 const port = process.env.port || 3000;
-const { MongoClient, ServerApiVersion } = require('mongodb');
+const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 
 app.use(cors())
 app.use(express.json())
@@ -41,6 +41,13 @@ async function run() {
         const result = await ticketCollection.find(data).sort({createdAt: 'desc'}).limit(8).toArray()
         res.send(result)
     })
+
+    app.get('/all-tickets', async(req,res)=>{
+        const result = await ticketCollection.find().toArray()
+        res.send(result)
+    })
+
+   
     // Connect the client to the server	(optional starting in v4.7)
     await client.connect();
     // Send a ping to confirm a successful connection
