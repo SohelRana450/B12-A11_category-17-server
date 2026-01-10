@@ -31,13 +31,13 @@ app.use(express.json())
 const verifyFBToken = async(req,res,next)=>{
 
   const token = req.headers.authorization
+  
 if(!token){
   return res.status(401).send({message: 'unathorized access'})
 }
   try {
     const idToken = token.split(' ')[1]
-    const decoded = await admin.auth().verifyIdToken(idToken)
-    
+    const decoded = await admin.auth().verifyIdToken(idToken) 
     req.decoded_email = decoded.email
 
 
@@ -105,8 +105,8 @@ async function run() {
         res.send(result)
     })
 
-    app.get('/advirtised-tickets',verifyFBToken, async(req,res)=>{
-      const filter = await ticketCollection.find({advertised: true}).toArray()
+    app.get('/advirtised-tickets',verifyFBToken,async(req,res)=>{
+      const filter = await ticketCollection.find({advertised: true,hidden: { $ne: true}}).toArray()
       res.send(filter)
     }
     )
@@ -114,58 +114,79 @@ async function run() {
     app.get('/tickets',verifyFBToken,async(req,res)=>{
         const data = req.body
         const result = await ticketCollection.find({ data,
-          hidden: { $ne: true}}).sort({createdAt: 'desc'}).limit(8).toArray()
+          hidden: { $ne: true}}).sort({createdAt: 'desc'}).limit(9).toArray()
+        res.send(result)
+    })
+    app.get('/tickets_listed',verifyFBToken,verifyAdmin,async(req,res)=>{
+        const data = req.body
+        const result = await ticketCollection.find({ data,
+          hidden: { $ne: true}}).sort({createdAt: 'desc'}).toArray()
         res.send(result)
     })
     app.get('/tickets-list',verifyFBToken,verifyAdmin,async(req,res)=>{
         const data = req.body
-        const result = await ticketCollection.find({ data,
-          hidden: { $ne: true}}).sort({createdAt: 'desc'}).limit(8).toArray()
+        const result = await ticketCollection.find({ data,status: "approved",
+          hidden: { $ne: true}}).sort({createdAt: 'desc'}).toArray()
         res.send(result)
     })
 
  
-app.get('/all-tickets',verifyFBToken, async (req, res) => {
-  const { sort, search, Transport, page = 1, limit = 6 } = req.query;
+app.get('/all-tickets', verifyFBToken, async (req, res) => {
+  try {
+    const { sort, search, Transport, page = 1, limit = 6 } = req.query;
 
-  const query = {
-    hidden: { $ne: true },
-  };
+    const query = { hidden: { $ne: true } };
+    const andConditions = [];
 
-  if (search) {
-    query.$or = [
-      { From: { $regex: search, $options: "i" } },
-      { To: { $regex: search, $options: "i" } },
-    ];
+    if (search) {
+      const parts = search.split(/ to |→/i).map(s => s.trim());
+      if (parts.length === 2) {
+        andConditions.push({
+          From: { $regex: parts[0], $options: "i" },
+          To: { $regex: parts[1], $options: "i" },
+        });
+      } else {
+        andConditions.push({
+          $or: [
+            { From: { $regex: search, $options: "i" } },
+            { To: { $regex: search, $options: "i" } },
+          ],
+        });
+      }
+    }
+
+    if (Transport) {
+      andConditions.push({
+        Transport: { $regex: Transport, $options: "i" },
+      });
+    }
+
+    if (andConditions.length > 0) {
+      query.$and = andConditions;
+    }
+
+    const sortQuery =
+      sort === "asc" ? { Price: 1 } :
+      sort === "desc" ? { Price: -1 } :
+      {};
+
+    const skip = (Number(page) - 1) * Number(limit);
+
+    const total = await ticketCollection.countDocuments(query);
+
+    const tickets = await ticketCollection
+      .find(query)
+      .sort(sortQuery)
+      .skip(skip)
+      .limit(Number(limit))
+      .toArray();
+
+    res.send({ total, page: Number(page), limit: Number(limit), data: tickets });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ error: "Server error" });
   }
-
-
-  if (Transport) {
-    query.Transport = Transport 
-  }
-
-  const sortQuery =
-    sort === "asc" ? { Price: 1 } :
-    sort === "desc" ? { Price: -1 } :
-    {};
-
-  const skip = (Number(page) - 1) * Number(limit);
-
-  const total = await ticketCollection.countDocuments(query);
-
-  const result = await ticketCollection
-    .find(query)
-    .sort(sortQuery)
-    .skip(skip)
-    .limit(Number(limit))
-    .toArray();
-
-  res.send({
-    total,
-    page: Number(page),
-    limit: Number(limit),
-    data: result,
-  });
 });
 
 

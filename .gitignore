@@ -1,6 +1,7 @@
 node_modules
 .env
 project.json
+project-bcba.json
 project-11.json
 vercel.json
 .vercel
